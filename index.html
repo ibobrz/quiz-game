@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة المسابقات التفاعلية</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+        }
+        .btn { transition: all 0.1s ease-in-out; }
+        .btn:active { transform: scale(0.95); }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.85); }
+        .game-code {
+            font-family: monospace;
+            font-size: 2.5rem;
+            letter-spacing: 0.5rem;
+            text-align: center;
+            color: #2dd4bf;
+            border: 2px dashed #374151;
+            padding: 1rem;
+            cursor: pointer;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            display: inline-block; width: 20px; height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%; border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div id="app-container" class="w-full max-w-3xl mx-auto">
+
+        <!-- Role Selection Screen -->
+        <div id="role-selection-screen" class="text-center bg-gray-800 p-8 rounded-2xl shadow-lg">
+            <h1 class="text-4xl font-bold mb-4 text-cyan-400">لعبة المسابقات التفاعلية</h1>
+            <p class="text-xl text-gray-300 mb-8">هل تريد الانضمام كـ...</p>
+            <div class="flex flex-col md:flex-row gap-4">
+                <button id="join-as-judge" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-2xl btn">👨‍⚖️ حَكَم</button>
+                <button id="join-as-player" class="w-full bg-cyan-500 hover:bg-cyan-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-2xl btn">🎮 لاعب</button>
+            </div>
+        </div>
+        
+        <!-- Judge Setup Screen -->
+        <div id="judge-setup-screen" class="hidden bg-gray-800 p-8 rounded-2xl shadow-lg">
+            <h2 class="text-3xl font-bold mb-4 text-yellow-400 text-center">مرحباً أيها الحكم!</h2>
+            <p class="text-center text-gray-300 mb-6">لنقم بإعداد اللعبة خطوة بخطوة.</p>
+            <div id="judge-form-content">
+                <!-- Content will be injected by JS -->
+            </div>
+        </div>
+
+        <!-- Player Join Screen -->
+        <div id="player-join-screen" class="hidden bg-gray-800 p-8 rounded-2xl shadow-lg">
+            <h2 class="text-3xl font-bold mb-6 text-cyan-400 text-center">انضم إلى اللعبة</h2>
+            <div class="space-y-4">
+                <input id="player-name-input" type="text" placeholder="أدخل اسمك هنا" class="w-full p-4 rounded-lg bg-gray-700 text-white border-2 border-gray-600 text-xl text-center">
+                <input id="game-code-input" type="text" placeholder="أدخل رمز اللعبة" class="w-full p-4 rounded-lg bg-gray-700 text-white border-2 border-gray-600 text-2xl text-center tracking-[0.5rem] uppercase">
+            </div>
+            <div class="flex gap-4 mt-6">
+                <button id="back-to-role-selection" class="w-1/3 bg-gray-600 font-bold py-3 rounded-lg btn">رجوع</button>
+                <button id="join-game-btn" class="w-2/3 bg-green-600 hover:bg-green-700 font-bold py-3 px-6 rounded-lg text-xl btn flex justify-center items-center gap-2">
+                    <span>انضمام</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="hidden text-center bg-gray-800 p-8 rounded-2xl shadow-lg">
+            <h2 id="lobby-title" class="text-3xl font-bold mb-4"></h2>
+            <p class="mb-4 text-gray-300">شارك هذا الرمز مع اللاعبين:</p>
+            <div id="game-code-display" class="game-code mb-6" title="اضغط للنسخ"></div>
+            <p class="mb-6 text-xl">حالة اللاعبين:</p>
+            <div class="grid grid-cols-2 gap-4 text-lg">
+                <div id="lobby-p1-status" class="p-4 bg-gray-700 rounded-lg">... بانتظار اللاعب الأول</div>
+                <div id="lobby-p2-status" class="p-4 bg-gray-700 rounded-lg">... بانتظار اللاعب الثاني</div>
+            </div>
+            <div id="judge-start-button-container" class="mt-8"></div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="hidden">
+            <div class="grid grid-cols-2 gap-4 mb-4 text-center">
+                <div class="bg-gray-800 p-3 rounded-xl shadow-md"><h2 id="p1-name" class="text-lg font-bold text-cyan-400 truncate"></h2><p id="p1-score" class="text-2xl font-bold">0</p></div>
+                <div class="bg-gray-800 p-3 rounded-xl shadow-md"><h2 id="p2-name" class="text-lg font-bold text-pink-400 truncate"></h2><p id="p2-score" class="text-2xl font-bold">0</p></div>
+            </div>
+            <div class="text-center mb-4">
+                <h3 id="game-stage-title" class="text-3xl font-extrabold"></h3>
+                <p id="game-question-counter" class="text-gray-400 font-semibold"></p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-2xl shadow-lg min-h-[400px] flex flex-col justify-between">
+                <p id="game-question" class="text-2xl text-center text-gray-200 mb-6 flex-grow flex items-center justify-center"></p>
+                <div id="game-interaction-area"></div>
+            </div>
+        </div>
+        
+        <!-- Winner Screen -->
+        <div id="winner-screen" class="hidden text-center bg-gray-800 p-8 rounded-2xl shadow-lg">
+             <h1 class="text-5xl font-bold mb-4 text-yellow-400">🎉 تهانينا! 🎊</h1>
+             <p class="text-2xl mb-4">الفائز في هذه الجولة هو</p>
+             <p id="winner-name" class="text-6xl font-black mb-6 text-cyan-400"></p>
+             <p id="final-scores" class="text-xl text-gray-300 mb-8"></p>
+             <button id="play-again-button" class="w-full bg-cyan-500 text-gray-900 font-bold py-3 px-6 rounded-lg text-xl btn">العب مرة أخرى</button>
+        </div>
+    </div>
+
+<script type="module">
+    // =================================================================
+    //  EXPLANATION: HOW THE INTERNET & AI ARE CONNECTED
+    // =================================================================
+    //
+    // 1. REAL-TIME DATABASE (Firebase Firestore):
+    //    - The lines below starting with `import { ... } from "firebase/...";` load the Firebase library from the internet.
+    //    - `initializeApp(firebaseConfig)` connects our game to a specific cloud database.
+    //    - `onSnapshot(...)` is the magic function. It creates a LIVE connection. Whenever data changes in the database
+    //      (e.g., a player submits an answer), Firestore automatically sends the update to everyone's browser,
+    //      and the `renderCurrentState` function is called to update the screen. This is how the judge and players
+    //      see everything happen in real-time without refreshing the page.
+    //
+    // 2. ARTIFICIAL INTELLIGENCE (Google Gemini):
+    //    - The `API_URL_GENERATE` constant holds the specific internet address (API endpoint) for Google's Gemini AI model.
+    //    - The `callGemini(...)` function is where we talk to the AI. It uses the browser's built-in `fetch` command
+    //      to send a request over the internet to that address.
+    //    - We send the AI a "prompt" (our instructions) and a "schema" (the JSON format we want back).
+    //    - The AI processes our request and sends back a response, which we then use in the game (e.g., to generate a question
+    //      or get a scoring recommendation).
+    //
+    // IN SHORT: Firebase provides the live connection between users, and the Gemini API provides the "brain" for AI features.
+    // No extra setup is needed from you; it's all handled in this code.
+    //
+    // =================================================================
+
+    // --- Firebase SDKs ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // --- Firebase Config ---
+    // Import the functions you need from the SDKs you need
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDm5xJl2BKWa0YVj1XFfyd9gqWBbcpMXpI",
+  authDomain: "my-quiz-game-server-48e8c.firebaseapp.com",
+  projectId: "my-quiz-game-server-48e8c",
+  storageBucket: "my-quiz-game-server-48e8c.appspot.com",
+  messagingSenderId: "845367930761",
+  appId: "1:845367930761:web:28b4274172fa5357b8fb58",
+  measurementId: "G-D2EPGKFJSS"
+};
+
+// Initialize Firebase
+
+    // --- Gemini API Configuration ---
+    const API_KEY = "AIzaSyCrsTXW_Na1RiZ0BuO9IWCeBrGMFkw_nL8";
+    const API_URL_GENERATE = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+
+    // --- Static Game Data ---
+    const STAGE_DEFINITIONS = [
+        { title: "المرحلة الأولى: ماذا تعرف؟", type: "Open-ended", points: 10 },
+        { title: "المرحلة الثانية: الجرس", type: "Buzzer", points: 20 },
+        { title: "المرحلة الثالثة: المستحيل", type: "Open-ended", points: 50 },
+        { title: "المرحلة الرابعة: المزاد", type: "Auction", points: 10 },
+        { title: "المرحلة الخامسة: التشخيص", type: "Open-ended", points: 40 }
+    ];
+    const QUESTIONS_PER_STAGE = 5;
+
+    // --- DOM Elements ---
+    const screens = {
+        roleSelection: document.getElementById('role-selection-screen'),
+        judgeSetup: document.getElementById('judge-setup-screen'),
+        playerJoin: document.getElementById('player-join-screen'),
+        lobby: document.getElementById('lobby-screen'),
+        game: document.getElementById('game-screen'),
+        winner: document.getElementById('winner-screen'),
+    };
+    const judgeFormContent = document.getElementById('judge-form-content');
+    const joinAsJudgeBtn = document.getElementById('join-as-judge');
+    const joinAsPlayerBtn = document.getElementById('join-as-player');
+    const joinGameBtn = document.getElementById('join-game-btn');
+    
+    // --- App State ---
+    let db, auth;
+    let currentUser = {};
+    let unsubscribeGame = null;
+
+    // --- Gemini API Function ---
+    async function callGemini(prompt, schema) {
+        const payload = {
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: schema,
+            },
+        };
+        const response = await fetch(API_URL_GENERATE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error(`API Error: ${response.status}`);
+        const result = await response.json();
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        return JSON.parse(text.replace(/```json|```/g, '').trim());
+    }
+
+    // --- App Logic ---
+    
+    function showScreen(screenName) {
+        Object.values(screens).forEach(s => s.classList.add('hidden'));
+        if (screens[screenName]) {
+            screens[screenName].classList.remove('hidden');
+        }
+    }
+
+    async function main() {
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+        
+        try {
+            const userCredential = await signInAnonymously(auth);
+            currentUser.uid = userCredential.user.uid;
+            showScreen('roleSelection');
+        } catch(error) {
+            console.error("Anonymous Sign-in failed", error);
+            alert("فشل الاتصال بالخادم. يرجى تحديث الصفحة.");
+        }
+    }
+
+    joinAsJudgeBtn.addEventListener('click', () => {
+        currentUser.role = 'judge';
+        showScreen('judgeSetup');
+        renderJudgeSetupStep(1);
+    });
+
+    joinAsPlayerBtn.addEventListener('click', () => {
+        currentUser.role = 'player';
+        showScreen('playerJoin');
+    });
+    
+    // Judge Setup Flow
+    let gameSetupData = { stages: Array(STAGE_DEFINITIONS.length).fill(null).map(() => ({ questions: Array(QUESTIONS_PER_STAGE).fill(null) })) };
+    function renderJudgeSetupStep(step) {
+        if (step === 1) { // Quiz Details
+            judgeFormContent.innerHTML = `
+                <div class="space-y-4 mb-6">
+                    <input id="quiz-title-input" type="text" placeholder="عنوان المسابقة" class="w-full p-3 rounded-lg bg-gray-700" value="${gameSetupData.title || ''}">
+                </div>
+                <div class="flex gap-4">
+                     <button id="back-to-role-selection" class="w-1/3 bg-gray-600 font-bold py-3 rounded-lg btn">رجوع</button>
+                    <button id="next-step-btn" class="w-2/3 bg-green-600 font-bold py-3 rounded-lg btn">التالي</button>
+                </div>
+            `;
+            document.getElementById('back-to-role-selection').onclick = () => showScreen('roleSelection');
+            document.getElementById('next-step-btn').onclick = () => {
+                gameSetupData.title = document.getElementById('quiz-title-input').value || "مسابقة شيقة";
+                renderJudgeSetupStep(2);
+            };
+        } else if (step > 1 && step <= STAGE_DEFINITIONS.length + 1) { // Stages 1-5
+            const stageIndex = step - 2;
+            const stageDef = STAGE_DEFINITIONS[stageIndex];
+            
+            let questionsHTML = '';
+            for (let i = 0; i < QUESTIONS_PER_STAGE; i++) {
+                const qData = gameSetupData.stages[stageIndex].questions[i] || {};
+                questionsHTML += `
+                    <div class="p-3 bg-gray-900 rounded-lg">
+                        <label class="font-bold text-sm">السؤال ${i + 1}:</label>
+                        <textarea data-q-index="${i}" class="stage-question-input w-full p-2 mt-1 rounded-lg bg-gray-700" rows="2" placeholder="اكتب السؤال أو ولّده بالـ AI">${qData.question || ''}</textarea>
+                        <input type="hidden" data-q-index="${i}" class="stage-answer-input" value="${qData.modelAnswer || ''}">
+                        <button data-q-index="${i}" class="ai-generate-btn w-full mt-2 text-sm bg-teal-600 font-bold py-1 rounded-lg btn flex items-center justify-center gap-2">✨ توليد <div class="spinner hidden"></div></button>
+                    </div>
+                `;
+            }
+
+            judgeFormContent.innerHTML = `
+                <h3 class="text-2xl font-bold text-center mb-1">${stageDef.title}</h3>
+                <p class="text-center text-gray-400 mb-4">(نوع المرحلة: ${stageDef.type})</p>
+                <div class="space-y-3 mb-6 max-h-80 overflow-y-auto p-2 border border-gray-700 rounded-lg">${questionsHTML}</div>
+                <div class="flex gap-4">
+                    <button id="back-step-btn" class="w-1/3 bg-gray-600 font-bold py-3 rounded-lg btn">رجوع</button>
+                    <button id="next-step-btn" class="w-2/3 bg-green-600 font-bold py-3 rounded-lg btn">${step === STAGE_DEFINITIONS.length + 1 ? 'إنشاء اللعبة' : 'المرحلة التالية'}</button>
+                </div>
+            `;
+            
+            document.getElementById('back-step-btn').onclick = () => {
+                renderJudgeSetupStep(step - 1);
+            };
+
+            document.querySelectorAll('.ai-generate-btn').forEach(btn => {
+                btn.onclick = async (e) => {
+                    const qIndex = e.currentTarget.dataset.qIndex;
+                    const topic = prompt(`أدخل موضوع للسؤال رقم ${parseInt(qIndex) + 1} لمرحلة "${stageDef.title}":`);
+                    if (!topic) return;
+                    btn.disabled = true;
+                    btn.querySelector('.spinner').classList.remove('hidden');
+                    try {
+                        const promptText = `For a quiz stage titled '${stageDef.title}', generate a single creative question about '${topic}'. Respond with a JSON object: {"question": "...", "answer": "..."}.`;
+                        const schema = { type: "OBJECT", properties: { question: { type: "STRING" }, answer: { type: "STRING" } } };
+                        const result = await callGemini(promptText, schema);
+                        document.querySelector(`.stage-question-input[data-q-index="${qIndex}"]`).value = result.question;
+                        document.querySelector(`.stage-answer-input[data-q-index="${qIndex}"]`).value = result.answer; 
+                    } catch (err) {
+                        alert("فشل توليد السؤال. يرجى المحاولة مرة أخرى.");
+                        console.error(err);
+                    } finally {
+                        btn.disabled = false;
+                        btn.querySelector('.spinner').classList.add('hidden');
+                    }
+                };
+            });
+            
+            document.getElementById('next-step-btn').onclick = async () => {
+                const questionInputs = document.querySelectorAll('.stage-question-input');
+                const answerInputs = document.querySelectorAll('.stage-answer-input');
+                gameSetupData.stages[stageIndex] = { ...stageDef, questions: [] };
+                for (let i = 0; i < QUESTIONS_PER_STAGE; i++) {
+                    gameSetupData.stages[stageIndex].questions.push({
+                        question: questionInputs[i].value || `السؤال الافتراضي ${i+1}`,
+                        modelAnswer: answerInputs[i].value
+                    });
+                }
+
+                if (step === STAGE_DEFINITIONS.length + 1) await createGameInFirestore();
+                else renderJudgeSetupStep(step + 1);
+            };
+        }
+    }
+
+    async function createGameInFirestore() {
+        const gameId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        currentUser.gameId = gameId;
+        
+        const gameData = {
+            title: gameSetupData.title,
+            status: 'lobby',
+            judgeId: currentUser.uid,
+            players: {
+                p1: { name: null, id: null, score: 0, joined: false, answer: null },
+                p2: { name: null, id: null, score: 0, joined: false, answer: null }
+            },
+            stages: gameSetupData.stages,
+            currentStage: -1,
+            currentQuestion: -1,
+        };
+        
+        await setDoc(doc(db, "games", gameId), gameData);
+        listenToGameUpdates(gameId);
+    }
+
+    // Player Join Flow
+    document.getElementById('back-to-role-selection').onclick = () => showScreen('roleSelection');
+    joinGameBtn.addEventListener('click', async () => {
+        const nameInput = document.getElementById('player-name-input');
+        const codeInput = document.getElementById('game-code-input');
+        const playerName = nameInput.value.trim();
+        const gameId = codeInput.value.trim().toUpperCase();
+        if (!gameId || !playerName) {
+            alert("الرجاء إدخال اسمك ورمز اللعبة.");
+            return;
+        }
+
+        joinGameBtn.querySelector('.spinner').classList.remove('hidden');
+        joinGameBtn.querySelector('span').classList.add('hidden');
+        
+        try {
+            await runTransaction(db, async (transaction) => {
+                const gameRef = doc(db, "games", gameId);
+                const gameDoc = await transaction.get(gameRef);
+
+                if (!gameDoc.exists()) throw new Error("لم يتم العثور على لعبة بهذا الرمز.");
+                
+                const gameData = gameDoc.data();
+                let playerSlot = null;
+
+                if (gameData.players.p1.id === null) playerSlot = 'p1';
+                else if (gameData.players.p2.id === null) playerSlot = 'p2';
+                else throw new Error("هذه اللعبة ممتلئة بالفعل.");
+                
+                currentUser.gameId = gameId;
+                currentUser.playerKey = playerSlot;
+                
+                const updateData = {};
+                updateData[`players.${playerSlot}.id`] = currentUser.uid;
+                updateData[`players.${playerSlot}.name`] = playerName;
+                updateData[`players.${playerSlot}.joined`] = true;
+                transaction.update(gameRef, updateData);
+            });
+            listenToGameUpdates(gameId);
+
+        } catch (error) {
+            alert(error.message);
+        } finally {
+            joinGameBtn.querySelector('.spinner').classList.add('hidden');
+            joinGameBtn.querySelector('span').classList.remove('hidden');
+        }
+    });
+
+    // Real-time listener
+    function listenToGameUpdates(gameId) {
+        if (unsubscribeGame) unsubscribeGame();
+        unsubscribeGame = onSnapshot(doc(db, "games", gameId), (doc) => {
+            if (!doc.exists()) {
+                alert("تم حذف اللعبة من قبل الحكم.");
+                location.reload();
+                return;
+            }
+            const gameData = doc.data();
+            renderCurrentState(gameData);
+        });
+    }
+
+    // State Rendering
+    function renderCurrentState(gameData) {
+        if (gameData.status !== 'lobby' && gameData.currentStage >= 0) {
+            document.getElementById('p1-name').textContent = gameData.players.p1.name || 'اللاعب 1';
+            document.getElementById('p2-name').textContent = gameData.players.p2.name || 'اللاعب 2';
+            document.getElementById('p1-score').textContent = gameData.players.p1.score;
+            document.getElementById('p2-score').textContent = gameData.players.p2.score;
+        }
+
+        if (gameData.status === 'lobby') {
+            showScreen('lobby');
+            renderLobby(gameData);
+        } else if (gameData.status === 'in_progress') {
+            showScreen('game');
+            renderGameStage(gameData);
+        } else if (gameData.status === 'finished') {
+            showScreen('winner');
+            renderWinner(gameData);
+        }
+    }
+
+    function renderLobby(gameData) {
+        document.getElementById('lobby-title').textContent = `ردهة الانتظار: ${gameData.title}`;
+        document.getElementById('game-code-display').textContent = currentUser.gameId;
+        const p1Status = document.getElementById('lobby-p1-status');
+        const p2Status = document.getElementById('lobby-p2-status');
+        
+        p1Status.textContent = `${gameData.players.p1.name || 'اللاعب الأول'}: ${gameData.players.p1.joined ? '✅ انضم' : ' بانتظار...'}`;
+        p1Status.className = `p-4 rounded-lg ${gameData.players.p1.joined ? 'bg-green-800' : 'bg-gray-700'}`;
+        p2Status.textContent = `${gameData.players.p2.name || 'اللاعب الثاني'}: ${gameData.players.p2.joined ? '✅ انضم' : ' بانتظار...'}`;
+        p2Status.className = `p-4 rounded-lg ${gameData.players.p2.joined ? 'bg-green-800' : 'bg-gray-700'}`;
+
+        const judgeStartBtnContainer = document.getElementById('judge-start-button-container');
+        if (currentUser.role === 'judge' && gameData.players.p1.joined && gameData.players.p2.joined) {
+            judgeStartBtnContainer.innerHTML = `<button id="start-game-from-lobby" class="w-full bg-green-600 font-bold py-3 rounded-lg btn text-xl">ابدأ اللعبة!</button>`;
+            document.getElementById('start-game-from-lobby').onclick = async () => {
+                await updateDoc(doc(db, "games", currentUser.gameId), { currentStage: 0, currentQuestion: 0, status: 'in_progress' });
+            };
+        } else {
+             judgeStartBtnContainer.innerHTML = ``;
+        }
+    }
+
+    function renderGameStage(gameData) {
+        const { currentStage, currentQuestion } = gameData;
+        if (currentStage < 0 || currentStage >= gameData.stages.length) return;
+        
+        const stage = gameData.stages[currentStage];
+        const question = stage.questions[currentQuestion];
+
+        document.getElementById('game-stage-title').textContent = stage.title;
+        document.getElementById('game-question-counter').textContent = `السؤال ${currentQuestion + 1} من ${QUESTIONS_PER_STAGE}`;
+        document.getElementById('game-question').textContent = question.question;
+        const interactionArea = document.getElementById('game-interaction-area');
+        
+        const myPlayerKey = currentUser.playerKey;
+        const myData = myPlayerKey ? gameData.players[myPlayerKey] : null;
+
+        if (currentUser.role === 'player') {
+            if (myData && myData.answer === null) {
+                interactionArea.innerHTML = `
+                    <input id="player-answer-input" type="text" placeholder="اكتب إجابتك هنا" class="w-full p-3 rounded-lg bg-gray-700">
+                    <button id="submit-answer-btn" class="w-full mt-2 bg-cyan-600 font-bold py-2 rounded-lg btn">أرسل الإجابة</button>
+                `;
+                document.getElementById('submit-answer-btn').onclick = async () => {
+                    const answer = document.getElementById('player-answer-input').value;
+                    await updateDoc(doc(db, "games", currentUser.gameId), { [`players.${myPlayerKey}.answer`]: answer || " " });
+                };
+            } else {
+                 interactionArea.innerHTML = `<p class="text-center text-lg text-yellow-400">تم إرسال إجابتك. بانتظار الحكم...</p>`;
+            }
+        } else if (currentUser.role === 'judge') {
+            const p1 = gameData.players.p1;
+            const p2 = gameData.players.p2;
+
+            if (p1.answer !== null && p2.answer !== null) {
+                interactionArea.innerHTML = `
+                    <h4 class="text-lg font-bold text-yellow-400 mb-4 text-center">أيها الحكم، قم بتقييم الإجابات:</h4>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="p-4 bg-gray-700 rounded-lg space-y-2">
+                             <p class="font-bold text-cyan-400">${p1.name}: <span class="text-lg text-white">"${p1.answer}"</span></p>
+                             <div id="ai-verdict-p1" class="h-8 flex items-center gap-2 text-sm"><div class="spinner"></div><span>AI يراجع...</span></div>
+                             <div class="flex gap-2"><button data-player="p1" class="w-full bg-green-500 p-2 rounded-lg btn judge-verdict">صحيح</button><button data-player="p1" class="w-full bg-red-500 p-2 rounded-lg btn judge-verdict">خطأ</button></div>
+                        </div>
+                        <div class="p-4 bg-gray-700 rounded-lg space-y-2">
+                             <p class="font-bold text-pink-400">${p2.name}: <span class="text-lg text-white">"${p2.answer}"</span></p>
+                             <div id="ai-verdict-p2" class="h-8 flex items-center gap-2 text-sm"><div class="spinner"></div><span>AI يراجع...</span></div>
+                             <div class="flex gap-2"><button data-player="p2" class="w-full bg-green-500 p-2 rounded-lg btn judge-verdict">صحيح</button><button data-player="p2" class="w-full bg-red-500 p-2 rounded-lg btn judge-verdict">خطأ</button></div>
+                        </div>
+                    </div>
+                    <button id="next-question-btn" class="w-full mt-6 bg-blue-600 font-bold py-3 rounded-lg btn hidden">السؤال التالي</button>
+                `;
+                
+                const validateAnswers = async () => {
+                    const modelAnswer = question.modelAnswer;
+                    if (!modelAnswer) {
+                        document.getElementById('ai-verdict-p1').textContent = "لا توجد إجابة نموذجية للمقارنة.";
+                        document.getElementById('ai-verdict-p2').textContent = "لا توجد إجابة نموذجية للمقارنة.";
+                        return;
+                    }
+                    
+                    const schema = { type: "OBJECT", properties: { is_correct: { type: "BOOLEAN" } } };
+                    
+                    try {
+                        const prompt1 = `Is the user's answer "${p1.answer}" a correct way of saying the correct answer "${modelAnswer}"? Respond with JSON.`;
+                        const result1 = await callGemini(prompt1, schema);
+                        document.getElementById('ai-verdict-p1').textContent = result1.is_correct ? '✨ توصية AI: ✅ صحيح' : '✨ توصية AI: ❌ خطأ';
+                    } catch { document.getElementById('ai-verdict-p1').textContent = 'فشل تقييم AI'; }
+                    try {
+                        const prompt2 = `Is the user's answer "${p2.answer}" a correct way of saying the correct answer "${modelAnswer}"? Respond with JSON.`;
+                        const result2 = await callGemini(prompt2, schema);
+                        document.getElementById('ai-verdict-p2').textContent = result2.is_correct ? '✨ توصية AI: ✅ صحيح' : '✨ توصية AI: ❌ خطأ';
+                    } catch { document.getElementById('ai-verdict-p2').textContent = 'فشل تقييم AI'; }
+                };
+                validateAnswers();
+
+                let verdicts = { p1: null, p2: null };
+                document.querySelectorAll('.judge-verdict').forEach(btn => btn.onclick = (e) => {
+                    const player = e.target.dataset.player;
+                    verdicts[player] = e.target.textContent === 'صحيح';
+                    e.target.parentElement.querySelectorAll('button').forEach(b => b.disabled = true);
+                    e.target.style.border = '2px solid white';
+                    if (verdicts.p1 !== null && verdicts.p2 !== null) {
+                         document.getElementById('next-question-btn').classList.remove('hidden');
+                    }
+                });
+                
+                document.getElementById('next-question-btn').onclick = async () => {
+                    const updates = { 'players.p1.answer': null, 'players.p2.answer': null };
+                    if (verdicts.p1) updates['players.p1.score'] = p1.score + (stage.points || 20);
+                    if (verdicts.p2) updates['players.p2.score'] = p2.score + (stage.points || 20);
+                    
+                    let nextQuestion = currentQuestion + 1;
+                    let nextStage = currentStage;
+
+                    if (nextQuestion >= QUESTIONS_PER_STAGE) {
+                        nextQuestion = 0;
+                        nextStage++;
+                    }
+
+                    if (nextStage >= gameData.stages.length) {
+                        updates.status = 'finished';
+                    } else {
+                        updates.currentStage = nextStage;
+                        updates.currentQuestion = nextQuestion;
+                    }
+                    
+                    await updateDoc(doc(db, "games", currentUser.gameId), updates);
+                };
+            } else {
+                 interactionArea.innerHTML = `<p class="text-center text-lg text-yellow-400">بانتظار إجابات اللاعبين...</p>`;
+            }
+        }
+    }
+
+    function renderWinner(gameData) {
+        const p1 = gameData.players.p1;
+        const p2 = gameData.players.p2;
+        let winner;
+
+        if (p1.score > p2.score) winner = p1;
+        else if (p2.score > p1.score) winner = p2;
+        else { 
+            document.getElementById('winner-name').textContent = "إنه تعادل!";
+            document.getElementById('final-scores').textContent = `النتيجة النهائية: ${p1.score} - ${p2.score}`;
+            return;
+        }
+
+        document.getElementById('winner-name').textContent = winner.name;
+        document.getElementById('final-scores').textContent = `النتيجة النهائية: ${p1.name} (${p1.score}) مقابل ${p2.name} (${p2.score})`;
+        confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
+    }
+
+    // --- Event Listeners ---
+    document.getElementById('game-code-display')?.addEventListener('click', (e) => {
+        if(navigator.clipboard) {
+            navigator.clipboard.writeText(e.target.textContent).then(() => {
+                alert("تم نسخ رمز اللعبة!");
+            });
+        }
+    });
+    
+    document.getElementById('play-again-button').addEventListener('click', () => location.reload());
+
+    // --- Init ---
+    main();
+</script>
+</body>
+</html>
