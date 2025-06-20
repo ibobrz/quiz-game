@@ -127,15 +127,15 @@
     //      and the `renderCurrentState` function is called to update the screen. This is how the judge and players
     //      see everything happen in real-time without refreshing the page.
     //
-    // 2. ARTIFICIAL INTELLIGENCE (Google Gemini):
-    //    - The `API_URL_GENERATE` constant holds the specific internet address (API endpoint) for Google's Gemini AI model.
-    //    - The `callGemini(...)` function is where we talk to the AI. It uses the browser's built-in `fetch` command
+    // 2. ARTIFICIAL INTELLIGENCE (OpenAI ChatGPT):
+    //    - The `API_URL_GENERATE` constant holds the endpoint for the ChatGPT model.
+    //    - The `callChatGPT(...)` function is where we talk to the AI. It uses the browser's built-in `fetch` command
     //      to send a request over the internet to that address.
-    //    - We send the AI a "prompt" (our instructions) and a "schema" (the JSON format we want back).
+    //    - We send the AI a prompt and ask it to reply in JSON format.
     //    - The AI processes our request and sends back a response, which we then use in the game (e.g., to generate a question
     //      or get a scoring recommendation).
     //
-    // IN SHORT: Firebase provides the live connection between users, and the Gemini API provides the "brain" for AI features.
+    // IN SHORT: Firebase provides the live connection between users, and the ChatGPT API provides the "brain" for AI features.
     // No extra setup is needed from you; it's all handled in this code.
     //
     // =================================================================
@@ -164,17 +164,18 @@ const firebaseConfig = {
 
 // Initialize Firebase
 
-    // --- Gemini API Configuration ---
-    const API_KEY = "AIzaSyCrsTXW_Na1RiZ0BuO9IWCeBrGMFkw_nL8";
-    const API_URL_GENERATE = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+    // --- ChatGPT API Configuration ---
+    import promptTemplates from './prompt_templates.js';
+    const OPENAI_API_KEY = "YOUR_OPENAI_API_KEY";
+    const API_URL_GENERATE = "https://api.openai.com/v1/chat/completions";
 
     // --- Static Game Data ---
     const STAGE_DEFINITIONS = [
-        { title: "المرحلة الأولى: ماذا تعرف؟", type: "Open-ended", points: 10 },
-        { title: "المرحلة الثانية: الجرس", type: "Buzzer", points: 20 },
-        { title: "المرحلة الثالثة: المستحيل", type: "Open-ended", points: 50 },
-        { title: "المرحلة الرابعة: المزاد", type: "Auction", points: 10 },
-        { title: "المرحلة الخامسة: التشخيص", type: "Open-ended", points: 40 }
+        { title: "المرحلة الأولى: ماذا تعرف؟", type: "Open-ended", points: 10, promptKey: 'recall' },
+        { title: "المرحلة الثانية: الجرس", type: "Buzzer", points: 20, promptKey: 'buzzer' },
+        { title: "المرحلة الثالثة: المستحيل", type: "Open-ended", points: 50, promptKey: 'hard' },
+        { title: "المرحلة الرابعة: المزاد", type: "Auction", points: 10, promptKey: 'auction' },
+        { title: "المرحلة الخامسة: التشخيص", type: "Open-ended", points: 40, promptKey: 'diagnosis' }
     ];
     const QUESTIONS_PER_STAGE = 5;
 
@@ -197,23 +198,24 @@ const firebaseConfig = {
     let currentUser = {};
     let unsubscribeGame = null;
 
-    // --- Gemini API Function ---
-    async function callGemini(prompt, schema) {
+    // --- ChatGPT API Function ---
+    async function callChatGPT(prompt) {
         const payload = {
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: schema,
-            },
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7
         };
         const response = await fetch(API_URL_GENERATE, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${OPENAI_API_KEY}`
+            },
             body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error(`API Error: ${response.status}`);
         const result = await response.json();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = result.choices?.[0]?.message?.content;
         return JSON.parse(text.replace(/```json|```/g, '').trim());
     }
 
@@ -253,12 +255,14 @@ const firebaseConfig = {
     });
     
     // Judge Setup Flow
-    let gameSetupData = { stages: Array(STAGE_DEFINITIONS.length).fill(null).map(() => ({ questions: Array(QUESTIONS_PER_STAGE).fill(null) })) };
+    let gameSetupData = { fileContent: '', stages: Array(STAGE_DEFINITIONS.length).fill(null).map(() => ({ questions: Array(QUESTIONS_PER_STAGE).fill(null) })) };
     function renderJudgeSetupStep(step) {
         if (step === 1) { // Quiz Details
             judgeFormContent.innerHTML = `
                 <div class="space-y-4 mb-6">
                     <input id="quiz-title-input" type="text" placeholder="عنوان المسابقة" class="w-full p-3 rounded-lg bg-gray-700" value="${gameSetupData.title || ''}">
+                    <input id="source-link-input" type="text" placeholder="رابط ملف أو نص للمصدر (اختياري)" class="w-full p-3 rounded-lg bg-gray-700" value="${gameSetupData.sourceLink || ''}">
+                    <input id="source-file-input" type="file" class="w-full p-3 rounded-lg bg-gray-700 text-gray-300" />
                 </div>
                 <div class="flex gap-4">
                      <button id="back-to-role-selection" class="w-1/3 bg-gray-600 font-bold py-3 rounded-lg btn">رجوع</button>
@@ -266,8 +270,20 @@ const firebaseConfig = {
                 </div>
             `;
             document.getElementById('back-to-role-selection').onclick = () => showScreen('roleSelection');
-            document.getElementById('next-step-btn').onclick = () => {
+            document.getElementById('next-step-btn').onclick = async () => {
                 gameSetupData.title = document.getElementById('quiz-title-input').value || "مسابقة شيقة";
+                gameSetupData.sourceLink = document.getElementById('source-link-input').value.trim();
+                const fileInput = document.getElementById('source-file-input');
+                if (fileInput.files[0]) {
+                    gameSetupData.fileContent = await fileInput.files[0].text();
+                } else if (gameSetupData.sourceLink) {
+                    try {
+                        const res = await fetch(gameSetupData.sourceLink);
+                        gameSetupData.fileContent = await res.text();
+                    } catch {
+                        gameSetupData.fileContent = '';
+                    }
+                }
                 renderJudgeSetupStep(2);
             };
         } else if (step > 1 && step <= STAGE_DEFINITIONS.length + 1) { // Stages 1-5
@@ -309,11 +325,14 @@ const firebaseConfig = {
                     btn.disabled = true;
                     btn.querySelector('.spinner').classList.remove('hidden');
                     try {
-                        const promptText = `For a quiz stage titled '${stageDef.title}', generate a single creative question about '${topic}'. Respond with a JSON object: {"question": "...", "answer": "..."}.`;
-                        const schema = { type: "OBJECT", properties: { question: { type: "STRING" }, answer: { type: "STRING" } } };
-                        const result = await callGemini(promptText, schema);
+                        const generator = promptTemplates[stageDef.promptKey];
+                        let promptText = generator ? generator({ topic }) : `اكتب سؤالًا عن ${topic}`;
+                        if (gameSetupData.fileContent) {
+                            promptText += `\nالمصدر:\n${gameSetupData.fileContent.slice(0,2000)}`;
+                        }
+                        const result = await callChatGPT(promptText);
                         document.querySelector(`.stage-question-input[data-q-index="${qIndex}"]`).value = result.question;
-                        document.querySelector(`.stage-answer-input[data-q-index="${qIndex}"]`).value = result.answer; 
+                        document.querySelector(`.stage-answer-input[data-q-index="${qIndex}"]`).value = result.answer || result.correct_answer;
                     } catch (err) {
                         alert("فشل توليد السؤال. يرجى المحاولة مرة أخرى.");
                         console.error(err);
@@ -525,16 +544,14 @@ const firebaseConfig = {
                         return;
                     }
                     
-                    const schema = { type: "OBJECT", properties: { is_correct: { type: "BOOLEAN" } } };
-                    
                     try {
                         const prompt1 = `Is the user's answer "${p1.answer}" a correct way of saying the correct answer "${modelAnswer}"? Respond with JSON.`;
-                        const result1 = await callGemini(prompt1, schema);
+                        const result1 = await callChatGPT(prompt1);
                         document.getElementById('ai-verdict-p1').textContent = result1.is_correct ? '✨ توصية AI: ✅ صحيح' : '✨ توصية AI: ❌ خطأ';
                     } catch { document.getElementById('ai-verdict-p1').textContent = 'فشل تقييم AI'; }
                     try {
                         const prompt2 = `Is the user's answer "${p2.answer}" a correct way of saying the correct answer "${modelAnswer}"? Respond with JSON.`;
-                        const result2 = await callGemini(prompt2, schema);
+                        const result2 = await callChatGPT(prompt2);
                         document.getElementById('ai-verdict-p2').textContent = result2.is_correct ? '✨ توصية AI: ✅ صحيح' : '✨ توصية AI: ❌ خطأ';
                     } catch { document.getElementById('ai-verdict-p2').textContent = 'فشل تقييم AI'; }
                 };
