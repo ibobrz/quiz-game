@@ -1,0 +1,8 @@
+{
+  "name": "quiz-game",
+  "version": "1.0.0",
+  "description": "ChatGPT-based Multiplayer Quiz Game",
+  "scripts": {
+    "test": "echo \"No tests specified\" && exit 0"
+  }
+}
