@@ -214,7 +214,14 @@ const firebaseConfig = {
         if (!response.ok) throw new Error(`API Error: ${response.status}`);
         const result = await response.json();
         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        return JSON.parse(text.replace(/```json|```/g, '').trim());
+        if (!text) throw new Error('Invalid AI response');
+        const cleaned = text.replace(/```json|```/g, '').trim();
+        try {
+            return JSON.parse(cleaned);
+        } catch (err) {
+            console.error('Failed to parse AI JSON:', cleaned);
+            throw new Error('Invalid AI JSON');
+        }
     }
 
     // --- App Logic ---
